@@ -2,11 +2,14 @@
 
 """
 Usage:
-  logger [options] add [TITLE]
+  logger [options] log [TITLE]
   logger [options] note [TITLE]
   logger [options] done [TITLE]
   logger [options] list [TITLE]
   logger [options] ls [TITLE]
+  logger [options] clock [TITLE]
+  logger [options] view
+  logger [options] toc
 
 Arguments:
   TITLE    Task description with any tags
@@ -37,6 +40,20 @@ def str_presenter(dumper, data):
 
 yaml.add_representer(str, str_presenter)
 
+# ANSI code info stolen from
+#  https://github.com/bram85/topydo/blob/master/topydo/lib/Color.py
+#  http://bluesock.org/~willg/dev/ansi.html
+
+def ansi_neutral():
+    return '\033[0m'
+
+def ansi_green():
+    return '\033[1;36m'
+
+def ansi_yellow():
+    return '\033[0;33m'
+
+# And here we go...
 
 class Logger(object):
 
@@ -125,13 +142,14 @@ class Logger(object):
         return filter
 
     def print_terse(self, rec, time=False):
-        tags = ""
+        tags = ansi_yellow()
         if 'tags' in rec:
             tags += " +" + (" +".join(rec['tags']))
         if time and 'tfinish' in rec and 'tstamp' in rec:
             tdiff = rec['tfinish']-rec['tstamp']
             tags += ' [{0} m]'.format(tdiff.seconds // 60)
-        print('{date} {desc}{0}'.format(tags, **rec))
+        tags += ansi_neutral()
+        print('{1}{date}{2} {desc}{0}'.format(tags, ansi_green(), ansi_neutral(), **rec))
 
     def print_verbose(self, rec):
         self.print_terse(rec, time=True)
@@ -149,6 +167,36 @@ class Logger(object):
                     self.print_verbose(rec)
                 else:
                     self.print_terse(rec)
+
+    def clock(self, desc=None, adate=None, bdate=None,
+              tags=None, verbose=True):
+        filter_tags = self._tags_filter(tags)
+        filter_date = self._date_filter(adate, bdate)
+        result = None
+        for rec in self.recs:
+            if (filter_tags(rec) and filter_date(rec) and
+                'tstamp' in rec and 'tfinish' in rec):
+                tdiff = rec['tfinish']-rec['tstamp']
+                if result is None:
+                    result = tdiff
+                else:
+                    result = result + tdiff
+        return result
+
+    def view(self):
+        print("\nRecent log items")
+        print("----------------")
+        if len(self.recs) <= 5:
+            recs_view = self.recs
+        else:
+            recs_view = self.recs[-5:]
+        for rec in recs_view:
+            self.print_terse(rec)
+        if (self.recs and
+            'tstamp' in self.recs[-1] and
+            not 'tfinal' in self.recs[-1]):
+            tdiff = datetime.now() - rec['tstamp']
+            print("\nLast task open for: {0} minutes".format(tdiff.seconds // 60))
 
 
 def parse_date(s):
@@ -213,7 +261,7 @@ def main():
     if date is None and options['--today']:
         date = today
 
-    if options['add'] or options['note']:
+    if options['log'] or options['note']:
         logger.add(desc, date or today, tags)
         logger.start()
         if elapsed is not None:
@@ -223,7 +271,12 @@ def main():
     elif options['done']:
         logger.update(desc, date, tags)
         logger.finish()
-    elif options['list'] or options['ls']:
+    elif options['toc']:
+        rec = logger.recs[-1]
+        logger.print_terse(rec)
+        tdiff = datetime.now() - rec['tstamp']
+        print("Elapsed time: {0} minutes".format(tdiff.seconds // 60))
+    elif options['list'] or options['ls'] or options['clock']:
         if date:
             after = date
             before = date
@@ -231,6 +284,11 @@ def main():
             after = options['--after'] and parse_date(options['--after'])
             before = options['--before'] and parse_date(options['--before'])
         logger.list(desc, after, before, tags, verbose=options['list'])
+        if options['clock']:
+            t = logger.clock(desc, after, before, tags)
+            print("Total elapsed time: {0}".format(t))
+    elif options['view']:
+        logger.view()
     else:
         print(__doc__)
         return
