@@ -194,7 +194,7 @@ class Logger(object):
             self.print_terse(rec)
         if (self.recs and
             'tstamp' in self.recs[-1] and
-            not 'tfinal' in self.recs[-1]):
+            not 'tfinish' in self.recs[-1]):
             tdiff = datetime.now() - rec['tstamp']
             print("\nLast task open for: {0} minutes".format(tdiff.seconds // 60))
 
