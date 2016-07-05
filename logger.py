@@ -17,6 +17,7 @@ Options:
   -p TIME, --prev=TIME    Minutes elapsed since start
   -a DATE, --after=DATE   Start date of list range
   -b DATE, --before=DATE  End date of list range
+  -t, --today             Add today's date stamp to title
   --dry                   Dry run (do not save back updates)
 """
 
@@ -197,11 +198,14 @@ def main():
         fname = 'current.yml'
     logger = Logger(fname)
 
+    today = datetime.today().date()
     desc, tags, date = split_desc(options['TITLE'])
     elapsed = elapsed_opt(options['--prev'])
+    if date is None and options['--today']:
+        date = today
 
     if options['add'] or options['note']:
-        logger.add(desc, date or datetime.today().date(), tags)
+        logger.add(desc, date or today, tags)
         logger.start()
         if elapsed is not None:
             logger.elapsed(elapsed)
