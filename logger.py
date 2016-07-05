@@ -201,7 +201,7 @@ def main():
     elapsed = elapsed_opt(options['--prev'])
 
     if options['add'] or options['note']:
-        logger.add(desc, date or datetime.today(), tags)
+        logger.add(desc, date or datetime.today().date(), tags)
         logger.start()
         if elapsed is not None:
             logger.elapsed(elapsed)
