@@ -124,21 +124,20 @@ class Logger(object):
             return False
         return filter
 
-    def print_terse(self, rec):
+    def print_terse(self, rec, time=False):
+        tags = ""
         if 'tags' in rec:
-            tags = " +" + (" +".join(rec['tags']))
-        else:
-            tags = ""
+            tags += " +" + (" +".join(rec['tags']))
+        if time and 'tfinish' in rec and 'tstamp' in rec:
+            tdiff = rec['tfinish']-rec['tstamp']
+            tags += ' [{0} m]'.format(tdiff.seconds // 60)
         print('{date} {desc}{0}'.format(tags, **rec))
 
     def print_verbose(self, rec):
-        print('---')
-        self.print_terse(rec)
-        if 'tfinish' in rec and 'tstamp' in rec:
-            tdiff = rec['tfinish']-rec['tstamp']
-            print('  Time: {0} m'.format(tdiff.seconds // 60))
+        self.print_terse(rec, time=True)
         if 'note' in rec:
-            print(rec['note'])
+            for line in rec['note'].splitlines():
+                print("    {0}".format(line))
 
     def list(self, desc=None, adate=None, bdate=None,
              tags=None, verbose=True):
