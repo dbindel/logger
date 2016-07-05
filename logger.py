@@ -1,4 +1,5 @@
 #!/Users/dbindel/anaconda/bin/python
+
 """
 Usage:
   logger [options] add [TITLE]
@@ -8,21 +9,21 @@ Usage:
   logger [options] ls [TITLE]
 
 Arguments:
-  TITLE    Task description
+  TITLE    Task description with any tags
 
 Options:
   -f FILE, --file=FILE    Input log file name
   -o FILE, --output=FILE  Output log file name
-  -d DATE, --date=DATE    Override date
-  -t TAGS, --tags=TAGS    Add tags
   -p TIME, --prev=TIME    Minutes elapsed since start
   -a DATE, --after=DATE   Start date of list range
   -b DATE, --before=DATE  End date of list range
+  --dry                   Dry run (do not save back updates)
 """
 
 from docopt import docopt
 from datetime import datetime, timedelta
 from os.path import expanduser
+import re
 import yaml
 import sys
 
@@ -36,7 +37,7 @@ class Logger(object):
 
     def save(self, ofname=None):
         if ofname is None:
-            yaml.dump(self.recs, f, default_flow_style=False)
+            print(yaml.dump(self.recs, default_flow_style=False))
         else:
             with open(ofname, 'wt') as f:
                 yaml.dump(self.recs, f, default_flow_style=False)
@@ -53,7 +54,7 @@ class Logger(object):
         if desc is not None:
             rec['desc'] = desc
         if date is not None:
-            rec['date'] = date.strftime('%Y-%m-%d')
+            rec['date'] = date
         if tags is not None:
             rec['tags'] = tags
 
@@ -61,13 +62,13 @@ class Logger(object):
         if now is None:
             now = datetime.now()
         rec = self.recs[-1]
-        rec['tstamp'] = now.isoformat(' ')
+        rec['tstamp'] = now
 
     def finish(self, now=None):
         if now is None:
             now = datetime.now()
         rec = self.recs[-1]
-        rec['tfinish'] = now.isoformat(' ')
+        rec['tfinish'] = now
 
     def elapsed(self, elapsed):
         now = datetime.now()
@@ -104,63 +105,83 @@ class Logger(object):
             def filter(rec):
                 return True
             return filter
-        adates = '0000-00-00' if adate is None else adate
-        bdates = '9999-99-99' if bdate is None else bdate
         def filter(rec):
             if 'date' in rec:
-                dates = rec['date'].strftime('%Y-%m-%d')
-                return dates >= adates and dates <= bdates
+                date = rec['date']
+                return ((not adate or date >= adate) and
+                        (not bdate or date <= bdate))
             return False
         return filter
 
+    def print_terse(self, rec):
+        if 'tags' in rec:
+            tags = " +" + (" +".join(rec['tags']))
+        else:
+            tags = ""
+        print('{date} {desc}{0}'.format(tags, **rec))
+
+    def print_verbose(self, rec):
+        print('---')
+        self.print_terse(rec)
+        if 'tfinish' in rec and 'tstamp' in rec:
+            tdiff = rec['tfinish']-rec['tstamp']
+            print('  Time: {0} m'.format(tdiff.seconds // 60))
+        if 'note' in rec:
+            print(rec['note'])
+
     def list(self, desc=None, adate=None, bdate=None,
-             tags=None, fmt=None, verbose=True):
+             tags=None, verbose=True):
         filter_tags = self._tags_filter(tags)
         filter_date = self._date_filter(adate, bdate)
         for rec in self.recs:
             if filter_tags(rec) and filter_date(rec):
                 if verbose:
-                    print('---')
-                print('{date}: {desc}'.format(**rec))
-                if verbose and 'tags' in rec:
-                    print('  Tags: {0}'.format(rec['tags']))
-                if verbose and 'tfinish' in rec and 'tstamp' in rec:
-                    dfmt = '%Y-%m-%d %H:%M:%S.%f'
-                    tfinish = datetime.strptime(rec['tfinish'], dfmt)
-                    tstart  = datetime.strptime(rec['tstamp'], dfmt)
-                    tdiff = tfinish-tstart
-                    print('  Time: {0} m'.format(tdiff.seconds // 60))
-                if verbose and 'note' in rec:
-                    print(rec['note'])
+                    self.print_verbose(rec)
+                else:
+                    self.print_terse(rec)
 
 
-def date_opt(dtime):
-    if dtime is None:
-        dtime = datetime.today()
+def parse_date(s):
+    dtime = datetime.strptime(s, "%Y-%m-%d")
+    return dtime.date()
+
+
+def split_desc(desc=None):
+    if desc is None:
+        date = None
+        desc = None
+        tags = None
     else:
-        try:
-            dtime = datetime.strptime(dtime, '%Y-%m-%d %H:%M')
-        except:
-            dtime = datetime.strptime(dtime, '%Y-%m-%d')
-    return dtime
 
+        # Split date from front
+        m = re.match('(\d\d\d\d-\d\d-\d\d)(\S*)', desc)
+        if m:
+            date = parse_date(desc[m.start(0):m.end(0)])
+            desc = desc[m.end(1):]
+        else:
+            date = None
 
-def file_opt(fname):
-    if fname is None:
-        fname = 'current.yml'
-    return fname
+        # Split tags from end
+        l = desc.split(" +")
+        if len(l[0]) == 0:
+            desc = None
+            tags = None
+        elif l[0][0] == "+":
+            l[0] = l[0][1:]
+            desc = None
+            tags = l
+        elif len(l) == 1:
+            desc = l[0]
+            tags = None
+        else:
+            desc = l[0]
+            tags = l[1:]
 
-
-def tags_opt(tags):
-    if tags is None:
-        return None
-    return tags.split()
+    return (desc, tags, date)
 
 
 def elapsed_opt(time):
-    if time is None:
-        return None
-    return int(time)
+    return time and int(time)
 
 
 def main():
@@ -176,38 +197,39 @@ def main():
         fname = 'current.yml'
     logger = Logger(fname)
 
-    desc = options['TITLE']
-    dtime = date_opt(options['--date'])
-    tags = tags_opt(options['--tags'])
+    desc, tags, date = split_desc(options['TITLE'])
     elapsed = elapsed_opt(options['--prev'])
 
     if options['add'] or options['note']:
-        logger.add(desc, dtime, tags)
+        logger.add(desc, date or datetime.today(), tags)
         logger.start()
         if elapsed is not None:
             logger.elapsed(elapsed)
         if options['note']:
             logger.note(sys.stdin.read(1024))
     elif options['done']:
-        ldate = None if options['--date'] is None else dtime
-        logger.update(desc, ldate, tags)
+        logger.update(desc, date, tags)
         logger.finish()
     elif options['list'] or options['ls']:
-        if options['--date'] is not None:
-            after = dtime
-            before = dtime
+        if date:
+            after = date
+            before = date
         else:
-            after = options['--after']
-            before = options['--before']
+            after = options['--after'] and parse_date(options['--after'])
+            before = options['--before'] and parse_date(options['--before'])
         logger.list(desc, after, before, tags, verbose=options['list'])
     else:
         print(__doc__)
         return
 
-    ofname = options['--output']
-    if ofname is None:
-        ofname = fname
-    logger.save(ofname)
+    if options['--dry']:
+        print("--- SAVE ---")
+        logger.save()
+    else:
+        ofname = options['--output']
+        if ofname is None:
+            ofname = fname
+        logger.save(ofname)
 
 
 if __name__=="__main__":
