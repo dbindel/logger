@@ -2,6 +2,9 @@
 
 """
 Usage:
+  logger [options] add [TITLE]
+  logger [options] del [ID]
+  logger [options] do [ID]
   logger [options] log [TITLE]
   logger [options] note [TITLE]
   logger [options] done [TITLE]
@@ -9,9 +12,11 @@ Usage:
   logger [options] ls [TITLE]
   logger [options] clock [TITLE]
   logger [options] view
+  logger [options]
 
 Arguments:
   TITLE    Task description with any tags
+  ID       Task identifier from to-do list
 
 Options:
   -f FILE, --file=FILE       Log file name
@@ -237,8 +242,12 @@ class Logger(object):
 
     def list(self, filters=[], verbose=True):
         "Print a filtered list of records."
+        count = 0
         for rec in self.filtered_recs(filters):
-            self.printer.print(rec, verbose=verbose)
+            r = rec.copy()
+            r['count'] = count
+            count += 1
+            self.printer.print(r, verbose=verbose)
 
     def clock(self, filters=[]):
         "Compute time spent on a filtered list of records."
@@ -250,12 +259,10 @@ class Logger(object):
 
     def view(self):
         "View the last few records."
-        print("\nRecent log items")
-        print("----------------")
         recs = self.recs if len(self.recs) <= 5 else self.recs[-5:]
         for rec in recs:
             self.printer.print(rec, verbose=False)
-        if self.recs and has_open_clock(self.recs[-1]):
+        if self.recs and has_open_clock(self.last):
             tdiff = datetime.now() - rec['tstamp']
             tdiff = timedelta(seconds=int(tdiff.total_seconds()))
             print("\nLast task open for: {0}".format(tdiff))
@@ -305,6 +312,7 @@ def get_config(fname):
     "Read configuration information on top of defaults."
     opt = {
         'log': 'log.yml',
+        'todo': 'todo.yml',
         'formats': {
             'entry': '{cyan}{date}{plain} {desc}{tags}',
             'tag':   '{yellow}+{0}{plain}',
@@ -325,8 +333,14 @@ def main():
 
     # Figure out filename and open logger file
     fname = options['--file'] or config_opt['log']
-    printer = RecPrinter(config_opt['formats'], config_opt['style'])
-    logger = Logger(fname, printer)
+    style = config_opt['style']
+    lformats = config_opt['formats']
+    logger = Logger(fname, RecPrinter(lformats, style))
+
+    # Open todo file
+    tformats = lformats.copy()
+    tformats['entry'] = '{count}. {desc}{tags}'
+    todo = Logger(config_opt['todo'], RecPrinter(tformats, style))
 
     # Split description
     today = datetime.today().date()
@@ -348,7 +362,21 @@ def main():
                date_filter(after, before)]
 
     # Dispatch command options
-    if options['log'] or options['note']:
+    if options['add']:
+        todo.add(desc, today, tags)
+    elif options['del']:
+        del todo.recs[int(options['ID'])]
+    elif options['do']:
+        id = int(options['ID'])
+        rec = todo.recs[id].copy()
+        del todo.recs[id]
+        rec['date'] = today
+        logger.recs.append(rec)
+        logger.start()
+        elapsed = options['--prev']
+        if elapsed is not None:
+            logger.elapsed(int(elapsed))
+    elif options['log'] or options['note']:
         logger.add(desc, date or today, tags)
         logger.start()
         elapsed = options['--prev']
@@ -366,14 +394,17 @@ def main():
         t = logger.clock(filters=filters)
         t = timedelta(seconds=int(t.total_seconds()))
         print("Total elapsed time: {0}".format(t))
-    elif options['view']:
-        logger.view()
     else:
-        print(__doc__)
-        return
+        print("\nTo-do items")
+        print("-------------")
+        todo.list(verbose=False)
+        print("\nRecent log items")
+        print("----------------")
+        logger.view()
 
     # Write back log
     logger.save(fname)
+    todo.save(config_opt['todo'])
 
 
 # ==================================================================
