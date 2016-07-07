@@ -9,19 +9,16 @@ Usage:
   logger [options] ls [TITLE]
   logger [options] clock [TITLE]
   logger [options] view
-  logger [options] toc
 
 Arguments:
   TITLE    Task description with any tags
 
 Options:
-  -f FILE, --file=FILE    Input log file name
-  -o FILE, --output=FILE  Output log file name
+  -f FILE, --file=FILE    Log file name
   -p TIME, --prev=TIME    Minutes elapsed since start
   -a DATE, --after=DATE   Start date of list range
   -b DATE, --before=DATE  End date of list range
   -t, --today             Add today's date stamp to title
-  --dry                   Dry run (do not save back updates)
 """
 
 from docopt import docopt
@@ -31,29 +28,140 @@ import re
 import yaml
 import sys
 
-# See http://stackoverflow.com/questions/8640959/how-can-i-control-what-scalar-form-pyyaml-uses-for-my-data
+"""
+A log file consists of YML records with the fields:
 
-def str_presenter(dumper, data):
-  if len(data.splitlines()) > 1:  # check for multiline string
-    return dumper.represent_scalar('tag:yaml.org,2002:str', data, style='|')
-  return dumper.represent_scalar('tag:yaml.org,2002:str', data)
+  date: Date of the entry (required)
+  desc: Description of the task (required)
+  note: Any notes
+  tags: List of text tags
+  tstamp: Time stamp when log entry was added
+  tfinish: Time stamp when log entry was marked done
 
-yaml.add_representer(str, str_presenter)
+Additional fields may be added as appropriate.  On input and output,
+log entries have a compact form inspired by todo.txt
+
+  2016-07-04 This is the description +tag1 +tag2
+"""
+
+
+# ==================================================================
+# Formatting functions
+
 
 # ANSI code info stolen from
 #  https://github.com/bram85/topydo/blob/master/topydo/lib/Color.py
 #  http://bluesock.org/~willg/dev/ansi.html
+#
+ansi_codes = {
+    'plain'        : '\033[0m',
+    'black'        : '\033[0;30m',
+    'blue'         : '\033[0;34m',
+    'green'        : '\033[0;32m',
+    'cyan'         : '\033[0;36m',
+    'red'          : '\033[0;31m',
+    'purple'       : '\033[0;35m',
+    'brown'        : '\033[0;33m',
+    'gray'         : '\033[0;37m',
+    'dark-gray'    : '\033[1;30m',
+    'light-blue'   : '\033[1;34m',
+    'light-green'  : '\033[1;32m',
+    'light-cyan'   : '\033[1;36m',
+    'light-red'    : '\033[1;31m',
+    'light-purple' : '\033[1;35m',
+    'yellow'       : '\033[1;33m',
+    'white'        : '\033[1;37m'
+}
 
-def ansi_neutral():
-    return '\033[0m'
 
-def ansi_green():
-    return '\033[1;36m'
+class RecPrinter(object):
+    """Format log records for printing.
 
-def ansi_yellow():
-    return '\033[0;33m'
+    Attributes:
+      style:     Dictionary of elements for format strings
+      fmt:       Basic record format strings
+      tag_fmt:   Format for one tag
+      clock_fmt: Format for elapsed time clock
+    """
 
-# And here we go...
+    def __init__(self, verbose=False):
+        self.verbose = verbose
+        self.style = ansi_codes.copy()
+        self.fmt = "{cyan}{date}{plain} {desc}{tags}"
+        self.tag_fmt = "{yellow}+{0}{plain}"
+        if verbose:
+            self.clock_fmt = " {brown}[{clock}]{plain}"
+        else:
+            self.clock_fmt = ""
+
+    def _tag_string(self, rec):
+        "Render record tags as a string."
+        if not 'tags' in rec:
+            return ""
+        tags = [self.tag_fmt.format(tag, **self.style) for tag in rec['tags']]
+        return " " + " ".join(tags)
+
+    def render(self, rec):
+        "Render record as a string."
+        args = self.style.copy()
+        args.update(rec)
+        args['tags'] = self._tag_string(rec)
+        recs = self.fmt.format(**args)
+        if 'tfinish' in rec and 'tstamp' in rec:
+            tdiff = rec['tfinish']-rec['tstamp']
+            args['clock'] = timedelta(seconds=tdiff.seconds)
+            recs += self.clock_fmt.format(**args)
+        if self.verbose and 'note' in rec:
+            for line in rec['note'].splitlines():
+                recs += "\n  {0}".format(line)
+        return recs
+
+    def print(self, rec):
+        "Print rendered record."
+        print(self.render(rec))
+
+
+# ==================================================================
+# Filtering functions
+
+
+def date_filter(adate=None, bdate=None):
+    "Return filter to check if record dates are in [adate, bdate]."
+    if adate is None and bdate is None:
+        return None
+    def f(rec):
+        return ((adate is None or rec['date'] >= adate) and
+                (bdate is None or rec['date'] <= bdate))
+    return f
+
+
+def tags_filter(tags=None):
+    "Return filter to check if records match tags spec."
+    if tags is None:
+        return None
+    def f(rec):
+        if not 'tags' in rec:
+            return False
+        dtags = {tag: True for tag in rec['tags']}
+        return not any(((tag[0] == "~" and tag[1:] in dtags) or
+                        (tag[0] != "~" and not tag in dtags)
+                        for tag in tags))
+    return f
+
+
+def has_clock(rec):
+    "Return true if record has a closed clock."
+    return 'tfinish' in rec and 'tstamp' in rec
+
+
+def has_open_clock(rec):
+    "Return true if record has a time stamp only."
+    return not 'tfinish' in rec and 'tstamp' in rec
+
+
+# ==================================================================
+# Log manager
+
 
 class Logger(object):
 
@@ -76,9 +184,8 @@ class Logger(object):
         self.update(desc, date, tags)
         return rec
 
-    def update(self, desc=None, date=None, tags=None, rec=None):
-        if rec is None:
-            rec = self.recs[-1]
+    def update(self, desc=None, date=None, tags=None):
+        rec = self.recs[-1]
         if desc is not None:
             rec['desc'] = desc
         if date is not None:
@@ -87,16 +194,10 @@ class Logger(object):
             rec['tags'] = tags
 
     def start(self, now=None):
-        if now is None:
-            now = datetime.now()
-        rec = self.recs[-1]
-        rec['tstamp'] = now
+        self.recs[-1]['tstamp'] = now or datetime.now()
 
     def finish(self, now=None):
-        if now is None:
-            now = datetime.now()
-        rec = self.recs[-1]
-        rec['tfinish'] = now
+        self.recs[-1]['tfinish'] = now or datetime.now()
 
     def elapsed(self, elapsed):
         now = datetime.now()
@@ -105,98 +206,41 @@ class Logger(object):
 
     def note(self, note=None):
         if note is not None:
-            rec = self.recs[-1]
-            rec['note'] = note
+            self.recs[-1]['note'] = note
 
-    def _tags_filter(self, tags=None):
-        if tags is None:
-            def filter(rec):
-                return True
-            return filter
-        allow_tags = []
-        block_tags = []
-        for tag in tags:
-            if tag[0] == '~':
-                block_tags.append(tag[1:])
-            else:
-                allow_tags.append(tag)
-        def filter(rec):
-            if not 'tags' in rec:
-                return False
-            dtags = {tag: True for tag in rec['tags']}
-            return (all([tag in dtags for tag in allow_tags]) and
-                    all([not tag in dtags for tag in block_tags]))
-        return filter
+    def filtered_recs(self, filters):
+        recs = self.recs
+        for f in filters:
+            recs = filter(f, recs)
+        return recs
 
-    def _date_filter(self, adate=None, bdate=None):
-        if adate is None and bdate is None:
-            def filter(rec):
-                return True
-            return filter
-        def filter(rec):
-            if 'date' in rec:
-                date = rec['date']
-                return ((not adate or date >= adate) and
-                        (not bdate or date <= bdate))
-            return False
-        return filter
+    def list(self, filters=[], verbose=True):
+        printer = RecPrinter(verbose=verbose)
+        for rec in self.filtered_recs(filters):
+            printer.print(rec)
 
-    def print_terse(self, rec, time=False):
-        tags = ansi_yellow()
-        if 'tags' in rec:
-            tags += " +" + (" +".join(rec['tags']))
-        if time and 'tfinish' in rec and 'tstamp' in rec:
+    def clock(self, filters=[]):
+        result = timedelta(seconds=0)
+        for rec in filter(has_clock, self.filtered_recs(filters)):
             tdiff = rec['tfinish']-rec['tstamp']
-            tags += ' [{0} m]'.format(tdiff.seconds // 60)
-        tags += ansi_neutral()
-        print('{1}{date}{2} {desc}{0}'.format(tags, ansi_green(), ansi_neutral(), **rec))
-
-    def print_verbose(self, rec):
-        self.print_terse(rec, time=True)
-        if 'note' in rec:
-            for line in rec['note'].splitlines():
-                print("    {0}".format(line))
-
-    def list(self, desc=None, adate=None, bdate=None,
-             tags=None, verbose=True):
-        filter_tags = self._tags_filter(tags)
-        filter_date = self._date_filter(adate, bdate)
-        for rec in self.recs:
-            if filter_tags(rec) and filter_date(rec):
-                if verbose:
-                    self.print_verbose(rec)
-                else:
-                    self.print_terse(rec)
-
-    def clock(self, desc=None, adate=None, bdate=None,
-              tags=None, verbose=True):
-        filter_tags = self._tags_filter(tags)
-        filter_date = self._date_filter(adate, bdate)
-        result = None
-        for rec in self.recs:
-            if (filter_tags(rec) and filter_date(rec) and
-                'tstamp' in rec and 'tfinish' in rec):
-                tdiff = rec['tfinish']-rec['tstamp']
-                if result is None:
-                    result = tdiff
-                else:
-                    result = result + tdiff
+            result += tdiff
         return result
 
     def view(self):
         print("\nRecent log items")
         print("----------------")
-        if len(self.recs) <= 5:
-            recs_view = self.recs
-        else:
-            recs_view = self.recs[-5:]
-        for rec in recs_view:
-            self.print_terse(rec)
-        if (self.recs and
-            'tstamp' in self.recs[-1] and
-            not 'tfinish' in self.recs[-1]):
+        printer = RecPrinter(verbose=False)
+        recs = self.recs if len(self.recs) <= 5 else self.recs[-5:]
+        for rec in recs:
+            printer.print(rec)
+        if self.recs and has_open_clock(self.recs[-1]):
             tdiff = datetime.now() - rec['tstamp']
-            print("\nLast task open for: {0} minutes".format(tdiff.seconds // 60))
+            tdiff = timedelta(seconds=tdiff.seconds)
+            print("\nLast task open for: {0}".format(tdiff))
+
+
+# ==================================================================
+# Parsing and main routine
 
 
 def parse_date(s):
@@ -212,10 +256,10 @@ def split_desc(desc=None):
     else:
 
         # Split date from front
-        m = re.match('(\d\d\d\d-\d\d-\d\d)(\S*)', desc)
+        m = re.match('(\d\d\d\d-\d\d-\d\d)(\s*)', desc)
         if m:
-            date = parse_date(desc[m.start(0):m.end(0)])
-            desc = desc[m.end(1):]
+            date = parse_date(desc[m.start(1):m.end(1)])
+            desc = desc[m.end(2):]
         else:
             date = None
 
@@ -238,15 +282,16 @@ def split_desc(desc=None):
     return (desc, tags, date)
 
 
-def elapsed_opt(time):
-    return time and int(time)
-
-
 def main():
+
+    # Read configuration file
     with open(expanduser('~/.logger.yml'), 'rt') as f:
         default_options = yaml.load(f)
+
+    # Parse options
     options = docopt(__doc__)
 
+    # Figure out filename and open logger file
     if options['--file'] is not None:
         fname = options['--file']
     elif 'file' in default_options:
@@ -255,52 +300,62 @@ def main():
         fname = 'current.yml'
     logger = Logger(fname)
 
+    # Split description
     today = datetime.today().date()
     desc, tags, date = split_desc(options['TITLE'])
-    elapsed = elapsed_opt(options['--prev'])
     if date is None and options['--today']:
         date = today
 
+    # Set up any filters
+    after  = options['--after']
+    before = options['--before']
+    after  = after and parse_date(after)
+    before = before and parse_date(before)
+    filters = [tags_filter(tags),
+               date_filter(date, date),
+               date_filter(after, before)]
+
+    # Dispatch command options
     if options['log'] or options['note']:
         logger.add(desc, date or today, tags)
         logger.start()
+        elapsed = options['--prev']
         if elapsed is not None:
-            logger.elapsed(elapsed)
+            logger.elapsed(int(elapsed))
         if options['note']:
             logger.note(sys.stdin.read(1024))
     elif options['done']:
         logger.update(desc, date, tags)
         logger.finish()
-    elif options['toc']:
-        rec = logger.recs[-1]
-        logger.print_terse(rec)
-        tdiff = datetime.now() - rec['tstamp']
-        print("Elapsed time: {0} minutes".format(tdiff.seconds // 60))
-    elif options['list'] or options['ls'] or options['clock']:
-        if date:
-            after = date
-            before = date
-        else:
-            after = options['--after'] and parse_date(options['--after'])
-            before = options['--before'] and parse_date(options['--before'])
-        logger.list(desc, after, before, tags, verbose=options['list'])
-        if options['clock']:
-            t = logger.clock(desc, after, before, tags)
-            print("Total elapsed time: {0}".format(t))
+    elif options['list'] or options['ls']:
+        logger.list(filters=filters, verbose=options['list'])
+    elif options['clock']:
+        logger.list(filters=filters, verbose=False)
+        t = logger.clock(filters=filters)
+        t = timedelta(seconds=t.seconds)
+        print("Total elapsed time: {0}".format(t))
     elif options['view']:
         logger.view()
     else:
         print(__doc__)
         return
 
-    if options['--dry']:
-        print("--- SAVE ---")
-        logger.save()
-    else:
-        ofname = options['--output']
-        if ofname is None:
-            ofname = fname
-        logger.save(ofname)
+    # Write back log
+    logger.save(fname)
+
+
+# ==================================================================
+# Boilerplate and YAML rejiggering
+
+
+# See http://stackoverflow.com/questions/8640959/how-can-i-control-what-scalar-form-pyyaml-uses-for-my-data
+
+def str_presenter(dumper, data):
+    if len(data.splitlines()) > 1:  # check for multiline string
+        return dumper.represent_scalar('tag:yaml.org,2002:str', data, style='|')
+    return dumper.represent_scalar('tag:yaml.org,2002:str', data)
+
+yaml.add_representer(str, str_presenter)
 
 
 if __name__=="__main__":
