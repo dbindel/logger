@@ -85,17 +85,22 @@ class RecPrinter(object):
       clock_fmt: Format for elapsed time clock
     """
 
-    def __init__(self):
+    def __init__(self, formats={}, style={}):
         self.style = ansi_codes.copy()
-        self.fmt = "{cyan}{date}{plain} {desc}{tags}"
-        self.tag_fmt = "{yellow}+{0}{plain}"
-        self.clock_fmt = " {brown}[{clock}]{plain}"
+        self.formats = {
+            'entry': '{cyan}{date}{plain} {desc}{tags}',
+            'tag':   '{yellow}+{0}{plain}',
+            'clock': ' {brown}[{clock}]{plain}'
+        }
+        self.style.update(style)
+        self.formats.update(formats)
 
     def _tag_string(self, rec):
         "Render record tags as a string."
         if not 'tags' in rec:
             return ""
-        tags = [self.tag_fmt.format(tag, **self.style) for tag in rec['tags']]
+        tags = [self.formats['tag'].format(tag, **self.style)
+                for tag in rec['tags']]
         return " " + " ".join(tags)
 
     def render(self, rec, verbose=False):
@@ -103,11 +108,11 @@ class RecPrinter(object):
         args = self.style.copy()
         args.update(rec)
         args['tags'] = self._tag_string(rec)
-        recs = self.fmt.format(**args)
+        recs = self.formats['entry'].format(**args)
         if verbose and 'tfinish' in rec and 'tstamp' in rec:
             tdiff = rec['tfinish']-rec['tstamp']
             args['clock'] = timedelta(seconds=tdiff.seconds)
-            recs += self.clock_fmt.format(**args)
+            recs += self.formats['clock'].format(**args)
         if verbose and 'note' in rec:
             if 'note' in rec:
                 for line in rec['note'].splitlines():
@@ -252,7 +257,7 @@ class Logger(object):
             self.printer.print(rec, verbose=False)
         if self.recs and has_open_clock(self.recs[-1]):
             tdiff = datetime.now() - rec['tstamp']
-            tdiff = timedelta(seconds=tdiff.seconds)
+            tdiff = timedelta(seconds=int(tdiff.total_seconds()))
             print("\nLast task open for: {0}".format(tdiff))
 
 
@@ -296,29 +301,38 @@ def split_desc(desc=None):
 # ==================================================================
 # Main routine
 
+def get_config(fname):
+    "Read configuration information on top of defaults."
+    opt = {
+        'log': 'log.yml',
+        'formats': {
+            'entry': '{cyan}{date}{plain} {desc}{tags}',
+            'tag':   '{yellow}+{0}{plain}',
+            'clock': ' {brown}[{clock}]{plain}'
+        },
+        'style': {}
+    }
+    with open(expanduser(fname), 'rt') as f:
+        opt.update(yaml.load(f))
+    return opt
+
 
 def main():
 
-    # Read configuration file
-    with open(expanduser('~/.logger.yml'), 'rt') as f:
-        default_options = yaml.load(f)
-    printer = RecPrinter()
-
     # Parse options
+    config_opt = get_config('~/.logger.yml')
     options = docopt(__doc__)
 
     # Figure out filename and open logger file
-    if options['--file'] is not None:
-        fname = options['--file']
-    elif 'file' in default_options:
-        fname = default_options['file']
-    else:
-        fname = 'current.yml'
+    fname = options['--file'] or config_opt['log']
+    printer = RecPrinter(config_opt['formats'], config_opt['style'])
     logger = Logger(fname, printer)
 
     # Split description
     today = datetime.today().date()
     desc, tags, date = split_desc(options['TITLE'])
+
+    # Set date based on flags
     if date is None and options['--today']:
         date = today
     if date is None and options['--yesterday']:
@@ -350,7 +364,7 @@ def main():
     elif options['clock']:
         logger.list(filters=filters, verbose=False)
         t = logger.clock(filters=filters)
-        t = timedelta(seconds=t.seconds)
+        t = timedelta(seconds=int(t.total_seconds()))
         print("Total elapsed time: {0}".format(t))
     elif options['view']:
         logger.view()
