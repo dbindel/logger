@@ -401,6 +401,7 @@ def main():
         print("\nRecent log items")
         print("----------------")
         logger.view()
+        print(" ")
 
     # Write back log
     logger.save(fname)
