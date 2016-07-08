@@ -19,6 +19,7 @@ Arguments:
   ID       Task identifier from to-do list
 
 Options:
+  -c MINS, --clock=MINS      Minutes clocked
   -f FILE, --file=FILE       Log file name
   -p TIME, --prev=TIME       Minutes elapsed since start
   -a DATE, --after=DATE      Start date of list range
@@ -41,6 +42,7 @@ A log file consists of YML records with the fields:
   desc: Description of the task (required)
   note: Any notes
   tags: List of text tags
+  tclock: Minutes clocked (overrides tstamp/tfinish)
   tstamp: Time stamp when log entry was added
   tfinish: Time stamp when log entry was marked done
 
@@ -114,9 +116,11 @@ class RecPrinter(object):
         args.update(rec)
         args['tags'] = self._tag_string(rec)
         recs = self.formats['entry'].format(**args)
-        if verbose and 'tfinish' in rec and 'tstamp' in rec:
-            tdiff = rec['tfinish']-rec['tstamp']
-            args['clock'] = timedelta(seconds=tdiff.seconds)
+        if verbose and 'tclock' in rec:
+            args['clock'] = timedelta(seconds=60*rec['tclock'])
+            recs += self.formats['clock'].format(**args)
+        elif verbose and has_clock(rec):
+            args['clock'] = timedelta(seconds=rec_clock(rec).seconds)
             recs += self.formats['clock'].format(**args)
         if verbose and 'note' in rec:
             if 'note' in rec:
@@ -127,6 +131,17 @@ class RecPrinter(object):
     def print(self, rec, verbose=False):
         "Print rendered record."
         print(self.render(rec, verbose=verbose))
+
+
+# ==================================================================
+# Clock functions
+
+
+def rec_clock(rec):
+    if 'tclock' in rec:
+        return timedelta(seconds=60*rec['tclock'])
+    elif 'tfinish' in rec and 'tstamp' in rec:
+        return rec['tfinish']-rec['tstamp']
 
 
 # ==================================================================
@@ -159,12 +174,12 @@ def tags_filter(tags=None):
 
 def has_clock(rec):
     "Return true if record has a closed clock."
-    return 'tfinish' in rec and 'tstamp' in rec
+    return 'tclock' in rec or ('tfinish' in rec and 'tstamp' in rec)
 
 
 def has_open_clock(rec):
     "Return true if record has a time stamp only."
-    return not 'tfinish' in rec and 'tstamp' in rec
+    return not 'tfinish' in rec and not 'tclock' in rec and 'tstamp' in rec
 
 
 # ==================================================================
@@ -253,8 +268,7 @@ class Logger(object):
         "Compute time spent on a filtered list of records."
         result = timedelta(seconds=0)
         for rec in filter(has_clock, self.filtered_recs(filters)):
-            tdiff = rec['tfinish']-rec['tstamp']
-            result += tdiff
+            result += rec_clock(rec)
         return result
 
     def view(self):
