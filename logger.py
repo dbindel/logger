@@ -10,6 +10,7 @@ Usage:
   logger [options] done [TITLE]
   logger [options] list [TITLE]
   logger [options] ls [TITLE]
+  logger [options] cal [TITLE]
   logger [options] clock [TITLE]
   logger [options] view
   logger [options]
@@ -34,6 +35,7 @@ from os.path import expanduser
 import re
 import yaml
 import sys
+import copy
 
 """
 A log file consists of YML records with the fields:
@@ -96,6 +98,7 @@ class RecPrinter(object):
         self.style = ansi_codes.copy()
         self.formats = {
             'entry': '{cyan}{date}{plain} {desc}{tags}',
+            'cal':   '  {desc}{tags}',
             'tag':   '{yellow}+{0}{plain}',
             'clock': ' {brown}[{clock}]{plain}'
         }
@@ -110,12 +113,12 @@ class RecPrinter(object):
                 for tag in rec['tags']]
         return " " + " ".join(tags)
 
-    def render(self, rec, verbose=False):
+    def render(self, rec, verbose=False, fmt='entry'):
         "Render record as a string."
         args = self.style.copy()
         args.update(rec)
         args['tags'] = self._tag_string(rec)
-        recs = self.formats['entry'].format(**args)
+        recs = self.formats[fmt].format(**args)
         if verbose and 'tclock' in rec:
             args['clock'] = timedelta(seconds=60*rec['tclock'])
             recs += self.formats['clock'].format(**args)
@@ -128,9 +131,9 @@ class RecPrinter(object):
                     recs += "\n  {0}".format(line)
         return recs
 
-    def print(self, rec, verbose=False):
+    def print(self, rec, verbose=False, fmt='entry'):
         "Print rendered record."
-        print(self.render(rec, verbose=verbose))
+        print(self.render(rec, verbose=verbose, fmt=fmt))
 
 
 # ==================================================================
@@ -142,6 +145,16 @@ def rec_clock(rec):
         return timedelta(seconds=60*rec['tclock'])
     elif 'tfinish' in rec and 'tstamp' in rec:
         return rec['tfinish']-rec['tstamp']
+
+
+def parse_clock(c):
+    cs = c.split(':')
+    if len(cs) == 1:
+        return int(cs[0])
+    elif len(cs) == 2:
+        return 60*int(cs[1])+int(cs[0])
+    else:
+        raise ValueError('Wrong clock argument')
 
 
 # ==================================================================
@@ -197,11 +210,14 @@ class Logger(object):
       recs: Record list
     """
 
-    def __init__(self, ifname, printer=None):
-        "Load a log file with the given name."
+    def __init__(self, ifname=None, recs=None, printer=None):
+        "Load log data from a file or an existing data structure."
         self.printer = printer or RecPrinter()
-        with open(ifname, 'rt') as f:
-            self.recs = yaml.load(f) or []
+        if recs:
+            self.recs = self.recs
+        else:
+            with open(ifname, 'rt') as f:
+                self.recs = yaml.load(f) or []
 
     def save(self, ofname=None):
         "Write back a log file."
@@ -264,6 +280,22 @@ class Logger(object):
             count += 1
             self.printer.print(r, verbose=verbose)
 
+    def calendar(self, filters=[], verbose=True):
+        "Print a filtered list of records in calendar form."
+        count = 0
+        pdate = None
+        for rec in self.filtered_recs(filters):
+            r = rec.copy()
+            r['count'] = count
+            count += 1
+            if not pdate or pdate != rec['date']:
+                print(" ")
+                print(rec['date'].strftime('%Y-%m-%d %a'))
+                print("--------------")
+            self.printer.print(r, verbose=verbose, fmt='cal')
+            pdate = rec['date']
+        print(" ")
+
     def clock(self, filters=[]):
         "Compute time spent on a filtered list of records."
         result = timedelta(seconds=0)
@@ -280,6 +312,61 @@ class Logger(object):
             tdiff = datetime.now() - rec['tstamp']
             tdiff = timedelta(seconds=int(tdiff.total_seconds()))
             print("\nLast task open for: {0}".format(tdiff))
+
+
+# ==================================================================
+# To-do file manager
+
+class TodoLogger(Logger):
+    """Manage a todo file.
+
+    Attributes:
+      printer: RecPrinter object used for output
+      recs: Todo record list
+    """
+
+    def __init__(self, ifname, printer=None):
+        self.printer = printer or RecPrinter()
+        with open(ifname, 'rt') as f:
+            self.__data = yaml.load(f) or {}
+        self.recs = self.__data.get('todo', [])
+        self.rules = self.__data.get('scheduled', [])
+        self.run_rules()
+
+    def run_rules(self):
+        "Run rule"
+        for rule in self.rules:
+            if rule.get('active', True):
+                self.run_rule(rule)
+        self.rules = [rule for rule in self.rules if rule.get('active', True)]
+
+    def run_rule(self, rule):
+        "Run scheduler rule"
+        today = datetime.today().date()
+        if 'date' in rule and today >= rule['date']:
+            rec = copy.deepcopy(rule)
+            if 'repeat' in rule:
+                del rec['repeat']
+                rule['date'] += timedelta(days=rule['repeat'])
+            else:
+                rule['active'] = False
+            self.recs.append(rec)
+
+    def save(self, ofname=None):
+        "Write back a todo file."
+        self.__data['todo'] = self.recs
+        self.__data['scheduled'] = self.rules
+        with open(ofname, 'wt') as f:
+            yaml.dump(self.__data, f, default_flow_style=False)
+
+    def add(self, desc=None, date=None, tags=None):
+        "Add a new record and set the basic fields."
+        self.recs.append({})
+        self.update(desc, date, tags)
+        rec = self.last
+        if date > datetime.today().date():
+            self.rules.append(rec)
+            del self.recs[-1]
 
 
 # ==================================================================
@@ -329,6 +416,7 @@ def get_config(fname):
         'todo': 'todo.yml',
         'formats': {
             'entry': '{cyan}{date}{plain} {desc}{tags}',
+            'cal':   '  {desc}{tags}',
             'tag':   '{yellow}+{0}{plain}',
             'clock': ' {brown}[{clock}]{plain}'
         },
@@ -349,12 +437,12 @@ def main():
     fname = options['--file'] or config_opt['log']
     style = config_opt['style']
     lformats = config_opt['formats']
-    logger = Logger(fname, RecPrinter(lformats, style))
+    logger = Logger(fname, printer=RecPrinter(lformats, style))
 
     # Open todo file
     tformats = lformats.copy()
     tformats['entry'] = '{count}. {desc}{tags}'
-    todo = Logger(config_opt['todo'], RecPrinter(tformats, style))
+    todo = TodoLogger(config_opt['todo'], printer=RecPrinter(tformats, style))
 
     # Split description
     today = datetime.today().date()
@@ -375,9 +463,18 @@ def main():
                date_filter(date, date),
                date_filter(after, before)]
 
+    # Set clock / tfinish from command line
+    def set_clock(done=False):
+        if options['--prev']:
+            logger.elapsed(parse_clock(options['--prev']))
+        elif options['--clock']:
+            logger.last['tclock'] = parse_clock(options['--clock'])
+        elif done:
+            logger.finish()
+
     # Dispatch command options
     if options['add']:
-        todo.add(desc, today, tags)
+        todo.add(desc, date or today, tags)
     elif options['del']:
         del todo.recs[int(options['ID'])]
     elif options['do']:
@@ -387,22 +484,20 @@ def main():
         rec['date'] = today
         logger.recs.append(rec)
         logger.start()
-        elapsed = options['--prev']
-        if elapsed is not None:
-            logger.elapsed(int(elapsed))
+        set_clock()
     elif options['log'] or options['note']:
         logger.add(desc, date or today, tags)
         logger.start()
-        elapsed = options['--prev']
-        if elapsed is not None:
-            logger.elapsed(int(elapsed))
+        set_clock()
         if options['note']:
             logger.note(sys.stdin.read(1024))
     elif options['done']:
         logger.update(desc, date, tags)
-        logger.finish()
+        set_clock(True)
     elif options['list'] or options['ls']:
         logger.list(filters=filters, verbose=options['list'])
+    elif options['cal']:
+        logger.calendar(filters=filters, verbose=False)
     elif options['clock']:
         logger.list(filters=filters, verbose=False)
         t = logger.clock(filters=filters)
