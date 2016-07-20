@@ -43,6 +43,7 @@ a given tag. Otherwise, the common options are:
  - `-b DATE`: End date for a query range
  - `-y DAYS`: Days before today (date specification)
  - `-t`:      Today (date specification)
+ - `-n`:      Add note to an entry
 
 The basic commands for the logger CLI are:
 
@@ -55,7 +56,6 @@ The basic commands for the logger CLI are:
 ## Log management
 
  - `t log [DESC]`:  Add a log entry
- - `t note [DESC]`: Add a log entry with a note (entered via stdin)
  - `t done [DESC]`: Update last log entry data and closing time stamp
 
 ## Log inquiries

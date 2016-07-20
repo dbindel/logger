@@ -6,7 +6,6 @@ Usage:
   logger [options] del [ID]
   logger [options] do [ID]
   logger [options] log [TITLE]
-  logger [options] note [TITLE]
   logger [options] done [TITLE]
   logger [options] list [TITLE]
   logger [options] ls [TITLE]
@@ -20,6 +19,7 @@ Arguments:
   ID       Task identifier from to-do list
 
 Options:
+  -n, --note                 Add note field
   -c MINS, --clock=MINS      Minutes clocked
   -f FILE, --file=FILE       Log file name
   -p TIME, --prev=TIME       Minutes elapsed since start
@@ -485,12 +485,10 @@ def main():
         logger.recs.append(rec)
         logger.start()
         set_clock()
-    elif options['log'] or options['note']:
+    elif options['log']:
         logger.add(desc, date or today, tags)
         logger.start()
         set_clock()
-        if options['note']:
-            logger.note(sys.stdin.read(1024))
     elif options['done']:
         logger.update(desc, date, tags)
         set_clock(True)
@@ -511,6 +509,12 @@ def main():
         print("----------------")
         logger.view()
         print(" ")
+
+    # Add note if requested
+    if (options['--note'] and
+        options['add'] or options['do'] or
+        options['log'] or options['done']):
+        logger.note(sys.stdin.read(1024))
 
     # Write back log
     logger.save(fname)
