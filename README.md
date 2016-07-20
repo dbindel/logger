@@ -12,12 +12,13 @@ love Emacs, I do not love Org mode.  And though I think [todo.txt] is
 awesome, I want to track my days as well as upcoming tasks.
 
 This framework is my current attempt at keeping track.  It is not
-perfect, but it is extensible.  The basic entities are tasks and log
-entries.  Both have a date, a description, organizing tags, and an
-optional note.  Log entries also have a time stamp, and optional end
-time or clock fields to track the time spent.  All entries are stored in
-YAML files.  These can be edited as text, and I keep them under version
-control.  There is also a command line utility to manage the files.
+perfect, but it is extensible.  The basic entities are tasks, log
+entries, and notes.  All have a date, a description, organizing tags,
+and an optional note.  Log entries also have a time stamp, and optional
+end time or clock fields to track the time spent.  All entries are
+stored in YAML files.  These can be edited as text, and I keep them
+under version control.  There is also a command line utility to manage
+the files.
 
 Organization is a personal thing, and this is a personal tool.
 Nonetheless, I am putting it in a public repository in case it does
@@ -68,9 +69,14 @@ With no arguments, `t` is equivalent to `t view`.
  - `t cal [DESC]`:   Show log entries under date/weekday subheadings
  - `t clock [DESC]`: Total times for all matching log entries
 
+## Note capture
+
+ - `t catch [DESC]`: Catch a new notes
+ - `t notes [DESC]`: List notes in the catch file
+
 # File formats
 
-There are three main files, all of which use YAML formatting conventions.
+There are four main files, all of which use YAML formatting conventions.
 
 ## Configuration
 
@@ -101,6 +107,13 @@ When an item is actually logged in real-time, marking it done (and setting
 the `tfinish` field) is a good way of recording the time taken.  When the
 log is updated only after the relevant time, the `tclock` field indicates an
 estimate of how much time was taken.
+
+## Catch file
+
+The catch file consists of log-like entries that do not actually correspond
+to log events.  These might be URLs that I want to revisit, books finished,
+quotes, etc.  They typically do not have time finished or clock information,
+but otherwise look much like log file entries.
 
 ## To do file
 

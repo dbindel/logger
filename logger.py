@@ -2,17 +2,19 @@
 
 """
 Usage:
+  logger [options]
+  logger [options] view
+  logger [options] list [TITLE]
+  logger [options] ls [TITLE]
+  logger [options] cal [TITLE]
+  logger [options] clock [TITLE]
   logger [options] add [TITLE]
   logger [options] del [ID]
   logger [options] do [ID]
   logger [options] log [TITLE]
   logger [options] done [TITLE]
-  logger [options] list [TITLE]
-  logger [options] ls [TITLE]
-  logger [options] cal [TITLE]
-  logger [options] clock [TITLE]
-  logger [options] view
-  logger [options]
+  logger [options] catch [TITLE]
+  logger [options] notes [TITLE]
 
 Arguments:
   TITLE    Task description with any tags
@@ -216,8 +218,11 @@ class Logger(object):
         if recs:
             self.recs = self.recs
         else:
-            with open(ifname, 'rt') as f:
-                self.recs = yaml.load(f) or []
+            try:
+                with open(ifname, 'rt') as f:
+                    self.recs = yaml.load(f) or []
+            except FileNotFoundError:
+                self.recs = []
 
     def save(self, ofname=None):
         "Write back a log file."
@@ -433,11 +438,14 @@ def main():
     config_opt = get_config('~/.logger.yml')
     options = docopt(__doc__)
 
-    # Figure out filename and open logger file
+    # Figure out filename and open logger and catch file
     fname = options['--file'] or config_opt['log']
+    cname = config_opt['catch']
     style = config_opt['style']
     lformats = config_opt['formats']
-    logger = Logger(fname, printer=RecPrinter(lformats, style))
+    printer = RecPrinter(lformats, style)
+    logger = Logger(fname, printer=printer)
+    catch = Logger(cname, printer=printer)
 
     # Open todo file
     tformats = lformats.copy()
@@ -492,8 +500,13 @@ def main():
     elif options['done']:
         logger.update(desc, date, tags)
         set_clock(True)
+    elif options['catch']:
+        catch.add(desc, date or today, tags)
+        catch.start()
     elif options['list'] or options['ls']:
         logger.list(filters=filters, verbose=options['list'])
+    elif options['notes']:
+        catch.list(filters=filters, verbose=True)
     elif options['cal']:
         logger.calendar(filters=filters, verbose=False)
     elif options['clock']:
@@ -512,12 +525,15 @@ def main():
 
     # Add note if requested
     if (options['--note'] and
-        options['add'] or options['do'] or
-        options['log'] or options['done']):
+        (options['add'] or options['do'] or
+         options['log'] or options['done'] or
+         options['catch'])):
+        print("Enter note {0}:".format(options['--note']))
         logger.note(sys.stdin.read(1024))
 
-    # Write back log
+    # Write back files
     logger.save(fname)
+    catch.save(cname)
     todo.save(config_opt['todo'])
 
 
