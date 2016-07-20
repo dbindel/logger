@@ -524,12 +524,19 @@ def main():
         print(" ")
 
     # Add note if requested
-    if (options['--note'] and
-        (options['add'] or options['do'] or
-         options['log'] or options['done'] or
-         options['catch'])):
-        print("Enter note {0}:".format(options['--note']))
-        logger.note(sys.stdin.read(1024))
+    def get_note():
+        print("Enter note text (end with Ctrl-D):")
+        return sys.stdin.read(1024)
+
+    if options['--note']:
+        if options['add']:
+            todo.note(get_note())
+        elif options['do'] or options['log'] or options['done']:
+            logger.note(get_note())
+        elif options['catch']:
+            catch.note(get_note())
+        else:
+            print("Cannot add note for this command")
 
     # Write back files
     logger.save(fname)
