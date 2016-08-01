@@ -66,23 +66,23 @@ log entries have a compact form inspired by todo.txt
 #  http://bluesock.org/~willg/dev/ansi.html
 #
 ansi_codes = {
-    'plain'        : '\033[0m',
-    'black'        : '\033[0;30m',
-    'blue'         : '\033[0;34m',
-    'green'        : '\033[0;32m',
-    'cyan'         : '\033[0;36m',
-    'red'          : '\033[0;31m',
-    'purple'       : '\033[0;35m',
-    'brown'        : '\033[0;33m',
-    'gray'         : '\033[0;37m',
-    'dark-gray'    : '\033[1;30m',
-    'light-blue'   : '\033[1;34m',
-    'light-green'  : '\033[1;32m',
-    'light-cyan'   : '\033[1;36m',
-    'light-red'    : '\033[1;31m',
-    'light-purple' : '\033[1;35m',
-    'yellow'       : '\033[1;33m',
-    'white'        : '\033[1;37m'
+    'plain':        '\033[0m',
+    'black':        '\033[0;30m',
+    'blue':         '\033[0;34m',
+    'green':        '\033[0;32m',
+    'cyan':         '\033[0;36m',
+    'red':          '\033[0;31m',
+    'purple':       '\033[0;35m',
+    'brown':        '\033[0;33m',
+    'gray':         '\033[0;37m',
+    'dark-gray':    '\033[1;30m',
+    'light-blue':   '\033[1;34m',
+    'light-green':  '\033[1;32m',
+    'light-cyan':   '\033[1;36m',
+    'light-red':    '\033[1;31m',
+    'light-purple': '\033[1;35m',
+    'yellow':       '\033[1;33m',
+    'white':        '\033[1;37m'
 }
 
 
@@ -109,7 +109,7 @@ class RecPrinter(object):
 
     def _tag_string(self, rec):
         "Render record tags as a string."
-        if not 'tags' in rec:
+        if 'tags' not in rec:
             return ""
         tags = [self.formats['tag'].format(tag, **self.style)
                 for tag in rec['tags']]
@@ -167,6 +167,7 @@ def date_filter(adate=None, bdate=None):
     "Return filter to check if record dates are in [adate, bdate]."
     if adate is None and bdate is None:
         return None
+
     def f(rec):
         return ((adate is None or rec['date'] >= adate) and
                 (bdate is None or rec['date'] <= bdate))
@@ -177,12 +178,13 @@ def tags_filter(tags=None):
     "Return filter to check if records match tags spec."
     if tags is None:
         return None
+
     def f(rec):
-        if not 'tags' in rec:
+        if 'tags' not in rec:
             return False
         dtags = {tag: True for tag in rec['tags']}
         return not any(((tag[0] == "~" and tag[1:] in dtags) or
-                        (tag[0] != "~" and not tag in dtags)
+                        (tag[0] != "~" and tag not in dtags)
                         for tag in tags))
     return f
 
@@ -194,7 +196,7 @@ def has_clock(rec):
 
 def has_open_clock(rec):
     "Return true if record has a time stamp only."
-    return not 'tfinish' in rec and not 'tclock' in rec and 'tstamp' in rec
+    return 'tfinish' not in rec and 'tclock' not in rec and 'tstamp' in rec
 
 
 # ==================================================================
@@ -463,9 +465,9 @@ def main():
         date = today-timedelta(days=int(options['--yesterday']))
 
     # Set up any filters
-    after  = options['--after']
+    after = options['--after']
     before = options['--before']
-    after  = after and parse_date(after)
+    after = after and parse_date(after)
     before = before and parse_date(before)
     filters = [tags_filter(tags),
                date_filter(date, date),
@@ -548,15 +550,17 @@ def main():
 # Boilerplate and YAML rejiggering
 
 
-# See http://stackoverflow.com/questions/8640959/how-can-i-control-what-scalar-form-pyyaml-uses-for-my-data
+# See http://stackoverflow.com/questions/8640959/...
+#   how-can-i-control-what-scalar-form-pyyaml-uses-for-my-data
 
 def str_presenter(dumper, data):
     if len(data.splitlines()) > 1:  # check for multiline string
-        return dumper.represent_scalar('tag:yaml.org,2002:str', data, style='|')
+        return dumper.represent_scalar('tag:yaml.org,2002:str',
+                                       data, style='|')
     return dumper.represent_scalar('tag:yaml.org,2002:str', data)
 
 yaml.add_representer(str, str_presenter)
 
 
-if __name__=="__main__":
+if __name__ == "__main__":
     main()
