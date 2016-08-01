@@ -13,8 +13,6 @@ Usage:
   logger [options] do [ID]
   logger [options] log [TITLE]
   logger [options] done [TITLE]
-  logger [options] catch [TITLE]
-  logger [options] notes [TITLE]
 
 Arguments:
   TITLE    Task description with any tags
@@ -24,6 +22,7 @@ Options:
   -n, --note                 Add note field
   -c MINS, --clock=MINS      Minutes clocked
   -f FILE, --file=FILE       Log file name
+  -x FILE, --xcol=FILE       Extended collection name
   -p TIME, --prev=TIME       Minutes elapsed since start
   -a DATE, --after=DATE      Start date of list range
   -b DATE, --before=DATE     End date of list range
@@ -226,8 +225,10 @@ class Logger(object):
             except FileNotFoundError:
                 self.recs = []
 
-    def save(self, ofname=None):
+    def save(self, ofname=None, key=None):
         "Write back a log file."
+        if key:
+            self.recs.sort(key=lambda r: r[key])
         with open(ofname, 'wt') as f:
             yaml.dump(self.recs, f, default_flow_style=False)
 
@@ -440,19 +441,35 @@ def main():
     config_opt = get_config('~/.logger.yml')
     options = docopt(__doc__)
 
+    # Get collections
+    collect_opt = config_opt['collections'] or {}
+
     # Figure out filename and open logger and catch file
-    fname = options['--file'] or config_opt['log']
-    cname = config_opt['catch']
+    sort_key = None
+    if options['--xcol']:
+        if options['--xcol'] not in collect_opt:
+            print('Valid collections')
+            print('-----------------')
+            for c in collect_opt:
+                print('{0}: {1}'.format(c, collect_opt[c]['desc']))
+            print(' ')
+            sys.exit(-1)
+        fname = collect_opt[options['--xcol']]['file']
+        if 'sort' in collect_opt[options['--xcol']]:
+            sort_key = collect_opt[options['--xcol']]['sort']
+    else:
+        fname = options['--file'] or config_opt['log']
+    fname = expanduser(fname)
     style = config_opt['style']
     lformats = config_opt['formats']
     printer = RecPrinter(lformats, style)
     logger = Logger(fname, printer=printer)
-    catch = Logger(cname, printer=printer)
 
     # Open todo file
     tformats = lformats.copy()
     tformats['entry'] = '{count}. {desc}{tags}'
-    todo = TodoLogger(config_opt['todo'], printer=RecPrinter(tformats, style))
+    todo = TodoLogger(expanduser(config_opt['todo']),
+                      printer=RecPrinter(tformats, style))
 
     # Split description
     today = datetime.today().date()
@@ -502,13 +519,8 @@ def main():
     elif options['done']:
         logger.update(desc, date, tags)
         set_clock(True)
-    elif options['catch']:
-        catch.add(desc, date or today, tags)
-        catch.start()
     elif options['list'] or options['ls']:
         logger.list(filters=filters, verbose=options['list'])
-    elif options['notes']:
-        catch.list(filters=filters, verbose=True)
     elif options['cal']:
         logger.calendar(filters=filters, verbose=False)
     elif options['clock']:
@@ -535,14 +547,11 @@ def main():
             todo.note(get_note())
         elif options['do'] or options['log'] or options['done']:
             logger.note(get_note())
-        elif options['catch']:
-            catch.note(get_note())
         else:
             print("Cannot add note for this command")
 
     # Write back files
-    logger.save(fname)
-    catch.save(cname)
+    logger.save(fname, key=sort_key)
     todo.save(config_opt['todo'])
 
 

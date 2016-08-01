@@ -39,6 +39,7 @@ a given tag. Otherwise, the common options are:
 
  - `-c MINS`: Minutes spent on a log entry
  - `-f FILE`: Alternate log file (mostly for debugging)
+ - `-x FILE`: Alternate collection
  - `-p MINS`: Minutes before the present that a log entry started
  - `-a DATE`: Start date for a query range
  - `-b DATE`: End date for a query range
@@ -69,11 +70,6 @@ With no arguments, `t` is equivalent to `t view`.
  - `t cal [DESC]`:   Show log entries under date/weekday subheadings
  - `t clock [DESC]`: Total times for all matching log entries
 
-## Note capture
-
- - `t catch [DESC]`: Catch a new notes
- - `t notes [DESC]`: List notes in the catch file
-
 # File formats
 
 There are four main files, all of which use YAML formatting conventions.
@@ -83,8 +79,28 @@ There are four main files, all of which use YAML formatting conventions.
 The configuration file is at `~/.logger.yml`.  It specifies paths to
 a log file and a todo file, e.g.
 
-    log:  /my/log.yml
-    todo: /my/todo.yml
+    log:   /my/log.yml
+    todo:  /my/todo.yml
+
+In addition, the configuration file may specify collections
+(specialized log files).  Collections have a description,
+a file name, and an optional sort key.
+
+    collections:
+      books:
+        desc: Books I have read
+        file: /my/books.yml
+      catch:
+        desc: Caught notes
+        file: /my/catch.yml
+      dates:
+        desc: Significant upcoming dates
+        file: /my/dates.yml
+        sort: date
+      miles:
+        desc: Personal milestones
+        file: /my/milestones.yml
+        sort: date
 
 ## Log file
 
@@ -108,9 +124,9 @@ the `tfinish` field) is a good way of recording the time taken.  When the
 log is updated only after the relevant time, the `tclock` field indicates an
 estimate of how much time was taken.
 
-## Catch file
+## Collection file
 
-The catch file consists of log-like entries that do not actually correspond
+Collections consists of log-like entries that do not actually correspond
 to log events.  These might be URLs that I want to revisit, books finished,
 quotes, etc.  They typically do not have time finished or clock information,
 but otherwise look much like log file entries.
