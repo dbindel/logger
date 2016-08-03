@@ -46,6 +46,7 @@ a given tag. Otherwise, the common options are:
  - `-y DAYS`: Days before today (date specification)
  - `-t`:      Today (date specification)
  - `-n`:      Add note to an entry
+ - `-l FILE`: Add a long note to an entry (points to a new file)
 
 The basic commands for the logger CLI are:
 

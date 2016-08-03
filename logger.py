@@ -20,6 +20,7 @@ Arguments:
 
 Options:
   -n, --note                 Add note field
+  -l FILE, --long=FILE       Add long note in external file
   -c MINS, --clock=MINS      Minutes clocked
   -f FILE, --file=FILE       Log file name
   -x FILE, --xcol=FILE       Extended collection name
@@ -33,6 +34,7 @@ Options:
 from docopt import docopt
 from datetime import datetime, timedelta
 from os.path import expanduser
+import subprocess
 import re
 import yaml
 import sys
@@ -538,15 +540,25 @@ def main():
         print(" ")
 
     # Add note if requested
-    def get_note():
-        print("Enter note text (end with Ctrl-D):")
-        return sys.stdin.read(1024)
+    def get_note(fname):
+        if fname and 'editor' in config_opt:
+            editor = config_opt['editor']
+            if 'notes' in config_opt:
+                ndir = config_opt['notes']
+                fname = "{0}{1}-{2}".format(ndir, today, fname)
+            else:
+                fname = "{0}-{1}".format(date, fname)
+            subprocess.call((editor, fname))
+            return fname
+        else:
+            print("Enter note text (end with Ctrl-D):")
+            return sys.stdin.read(1024)
 
-    if options['--note']:
+    if options['--note'] or options['--long']:
         if options['add']:
-            todo.note(get_note())
+            todo.note(get_note(options['--long']))
         elif options['do'] or options['log'] or options['done']:
-            logger.note(get_note())
+            logger.note(get_note(options['--long']))
         else:
             print("Cannot add note for this command")
 
