@@ -470,7 +470,8 @@ def main():
     # Open todo file
     tformats = lformats.copy()
     tformats['entry'] = '{count}. {desc}{tags}'
-    todo = TodoLogger(expanduser(config_opt['todo']),
+    config_opt['todo'] = expanduser(config_opt['todo'])
+    todo = TodoLogger(config_opt['todo'],
                       printer=RecPrinter(tformats, style))
 
     # Split description
