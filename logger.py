@@ -103,7 +103,9 @@ class RecPrinter(object):
             'entry': '{cyan}{date}{plain} {desc}{tags}',
             'cal':   '  {desc}{tags}',
             'tag':   '{yellow}+{0}{plain}',
-            'due':   ' {light_red}<{0}>{plain}',
+            'due':         ' {cyan}due:{light_green}{0}{plain} ',
+            'due_warning': ' {cyan}due:{yellow}{0}{plain} ',
+            'due_past':    ' {cyan}due:{light_red}{0}{plain} ',
             'clock': ' {brown}[{clock}]{plain}'
         }
         self.style.update(style)
@@ -121,7 +123,14 @@ class RecPrinter(object):
         "Render due date as a string."
         if 'due' not in rec:
             return ""
-        return self.formats['due'].format(rec['due'], **self.style)
+        fmt = self.formats['due']
+        t = datetime.now().date()
+        week = timedelta(days=7)
+        if 'due_past' in self.formats and t > rec['due']:
+            fmt = self.formats['due_past']
+        elif 'due_warning' in self.formats and t+week > rec['due']:
+            fmt = self.formats['due_warning']
+        return fmt.format(rec['due'], **self.style)
 
     def render(self, rec, verbose=False, fmt='entry'):
         "Render record as a string."
@@ -437,12 +446,7 @@ def get_config(fname):
     opt = {
         'log': 'log.yml',
         'todo': 'todo.yml',
-        'formats': {
-            'entry': '{cyan}{date}{plain} {desc}{tags}',
-            'cal':   '  {desc}{tags}',
-            'tag':   '{yellow}+{0}{plain}',
-            'clock': ' {brown}[{clock}]{plain}'
-        },
+        'formats': {},
         'style': {}
     }
     with open(expanduser(fname), 'rt') as f:
