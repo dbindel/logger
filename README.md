@@ -32,10 +32,11 @@ anyone else any good.
 
 The command line interface is implemented in `logger.py`.  I alias this
 to a single character (`t`).  Many commands take a description string,
-consisting of an (optional) date, a plain text description, and a set of
-context tags with the form `+tagname`.  A tag name of the form
-`+~tagname` is used in queries to find all log entries that do not match
-a given tag. Otherwise, the common options are:
+consisting of an (optional) date, a plain text description, optional
+field definitions (`foo:bar`) and a set of context tags with the form
+`+tagname`.  A tag name of the form `+~tagname` is used in queries to
+find all log entries that do not match a given tag. Otherwise, the
+common options are:
 
  - `-c MINS`: Minutes spent on a log entry
  - `-f FILE`: Alternate log file (mostly for debugging)
@@ -109,6 +110,7 @@ The log file consists of a list of records with the following fields:
 
  - date: Day of the logged item
  - desc: Brief text description
+ - due: Due date
  - tags: Optional list of context tags
  - tstamp: Time stamp of when item was entered
  - tfinish: Optional time stamp of when item was marked done

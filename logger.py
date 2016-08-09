@@ -76,12 +76,12 @@ ansi_codes = {
     'purple':       '\033[0;35m',
     'brown':        '\033[0;33m',
     'gray':         '\033[0;37m',
-    'dark-gray':    '\033[1;30m',
-    'light-blue':   '\033[1;34m',
-    'light-green':  '\033[1;32m',
-    'light-cyan':   '\033[1;36m',
-    'light-red':    '\033[1;31m',
-    'light-purple': '\033[1;35m',
+    'dark_gray':    '\033[1;30m',
+    'light_blue':   '\033[1;34m',
+    'light_green':  '\033[1;32m',
+    'light_cyan':   '\033[1;36m',
+    'light_red':    '\033[1;31m',
+    'light_purple': '\033[1;35m',
     'yellow':       '\033[1;33m',
     'white':        '\033[1;37m'
 }
@@ -103,6 +103,7 @@ class RecPrinter(object):
             'entry': '{cyan}{date}{plain} {desc}{tags}',
             'cal':   '  {desc}{tags}',
             'tag':   '{yellow}+{0}{plain}',
+            'due':   ' {light_red}<{0}>{plain}',
             'clock': ' {brown}[{clock}]{plain}'
         }
         self.style.update(style)
@@ -116,11 +117,18 @@ class RecPrinter(object):
                 for tag in rec['tags']]
         return " " + " ".join(tags)
 
+    def _due_string(self, rec):
+        "Render due date as a string."
+        if 'due' not in rec:
+            return ""
+        return self.formats['due'].format(rec['due'], **self.style)
+
     def render(self, rec, verbose=False, fmt='entry'):
         "Render record as a string."
         args = self.style.copy()
         args.update(rec)
         args['tags'] = self._tag_string(rec)
+        args['dues'] = self._due_string(rec)
         recs = self.formats[fmt].format(**args)
         if verbose and 'tclock' in rec:
             args['clock'] = timedelta(seconds=60*rec['tclock'])
@@ -239,13 +247,13 @@ class Logger(object):
         "Get the last log entry."
         return self.recs[-1]
 
-    def add(self, desc=None, date=None, tags=None):
+    def add(self, desc=None, date=None, fields=None, tags=None):
         "Add a new record and set the basic fields."
         self.recs.append({})
-        self.update(desc, date, tags)
+        self.update(desc, date, fields, tags)
         return self.last
 
-    def update(self, desc=None, date=None, tags=None):
+    def update(self, desc=None, date=None, fields=None, tags=None):
         "Update record."
         rec = self.last
         if desc is not None:
@@ -254,6 +262,8 @@ class Logger(object):
             rec['date'] = date
         if tags is not None:
             rec['tags'] = tags
+        if fields is not None:
+            rec.update(fields)
 
     def start(self, now=None):
         "Add time stamp to last; if none explicitly given, use current time."
@@ -369,10 +379,10 @@ class TodoLogger(Logger):
         with open(ofname, 'wt') as f:
             yaml.dump(self.__data, f, default_flow_style=False)
 
-    def add(self, desc=None, date=None, tags=None):
+    def add(self, desc=None, date=None, fields=None, tags=None):
         "Add a new record and set the basic fields."
         self.recs.append({})
-        self.update(desc, date, tags)
+        self.update(desc, date, fields, tags)
         rec = self.last
         if date > datetime.today().date():
             self.rules.append(rec)
@@ -390,9 +400,9 @@ def parse_date(s):
 
 
 def split_desc(desc=None):
-    "Split a title string into date, description, and tags."
+    "Split a title string into date, description, fields, and tags."
     if desc is None:
-        return (None, None, None)
+        return (None, None, None, None)
     m = re.match('(\d\d\d\d-\d\d-\d\d)(\s*)', desc)
     if m:
         date = parse_date(desc[m.start(1):m.end(1)])
@@ -413,7 +423,10 @@ def split_desc(desc=None):
     else:
         desc = l[0]
         tags = l[1:]
-    return (desc, tags, date)
+    fields = {m.group(1): yaml.load(m.group(2))
+              for m in re.finditer('([a-z][a-z0-9_]*):([^\s]+)', desc)}
+    desc = re.sub('([a-z][a-z0-9_]*):([^\s]+)', '', desc).strip()
+    return (desc, tags, date, fields)
 
 
 # ==================================================================
@@ -469,14 +482,14 @@ def main():
 
     # Open todo file
     tformats = lformats.copy()
-    tformats['entry'] = '{count}. {desc}{tags}'
+    tformats['entry'] = '{count}. {desc}{dues}{tags}'
     config_opt['todo'] = expanduser(config_opt['todo'])
     todo = TodoLogger(config_opt['todo'],
                       printer=RecPrinter(tformats, style))
 
     # Split description
     today = datetime.today().date()
-    desc, tags, date = split_desc(options['TITLE'])
+    desc, tags, date, fields = split_desc(options['TITLE'])
 
     # Set date based on flags
     if date is None and options['--today']:
@@ -504,7 +517,7 @@ def main():
 
     # Dispatch command options
     if options['add']:
-        todo.add(desc, date or today, tags)
+        todo.add(desc, date or today, fields, tags)
     elif options['del']:
         del todo.recs[int(options['ID'])]
     elif options['do']:
@@ -516,11 +529,11 @@ def main():
         logger.start()
         set_clock()
     elif options['log']:
-        logger.add(desc, date or today, tags)
+        logger.add(desc, date or today, fields, tags)
         logger.start()
         set_clock()
     elif options['done']:
-        logger.update(desc, date, tags)
+        logger.update(desc, date, fields, tags)
         set_clock(True)
     elif options['list'] or options['ls']:
         logger.list(filters=filters, verbose=options['list'])
