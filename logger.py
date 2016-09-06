@@ -11,8 +11,14 @@ Usage:
   logger [options] add [TITLE]
   logger [options] del [ID]
   logger [options] do [ID]
+  logger [options] undo [ID]
   logger [options] log [TITLE]
   logger [options] done [TITLE]
+  logger [options] delog [ID]
+  logger [options] tic
+  logger [options] toc
+  logger [options] cleartic
+  logger [options] addclock [ID]
 
 Arguments:
   TITLE    Task description with any tags
@@ -165,6 +171,16 @@ def rec_clock(rec):
         return timedelta(seconds=60*rec['tclock'])
     elif 'tfinish' in rec and 'tstamp' in rec:
         return rec['tfinish']-rec['tstamp']
+
+
+def add_clock(rec, tmin):
+    if 'tclock' in rec:
+        tc = rec['tclock']
+    elif 'tfinish' in rec and 'tstamp' in rec:
+        tc = (rec['tfinish']-rec['tstamp']).minutes
+    else:
+        tc = 0
+    rec['tclock'] = tc + tmin
 
 
 def parse_clock(c):
@@ -358,6 +374,7 @@ class TodoLogger(Logger):
         self.printer = printer or RecPrinter()
         with open(ifname, 'rt') as f:
             self.__data = yaml.load(f) or {}
+        self.tics = self.__data.get('tics', [])
         self.recs = self.__data.get('todo', [])
         self.rules = self.__data.get('scheduled', [])
         self.run_rules()
@@ -383,6 +400,7 @@ class TodoLogger(Logger):
 
     def save(self, ofname=None):
         "Write back a todo file."
+        self.__data['tics'] = self.tics
         self.__data['todo'] = self.recs
         self.__data['scheduled'] = self.rules
         with open(ofname, 'wt') as f:
@@ -397,6 +415,25 @@ class TodoLogger(Logger):
             self.rules.append(rec)
             del self.recs[-1]
 
+    def tic(self):
+        "Mark a clock time."
+        self.tics.append(datetime.now())
+
+    def toc(self):
+        "Report clock times"
+        pt = None
+        for t in self.tics:
+            if pt is None:
+                print(t)
+            else:
+                print("{0} [+{1}]".format(t, t-pt))
+            pt = t
+        if pt is not None:
+            print("Now [+{0}]".format(datetime.now()-pt))
+
+    def cleartic(self):
+        "Clear tic markers"
+        self.tics = []
 
 # ==================================================================
 # Parsing date strings and title strings
@@ -524,6 +561,15 @@ def main():
         todo.add(desc, date or today, fields, tags)
     elif options['del']:
         del todo.recs[int(options['ID'])]
+    elif options['delog']:
+        del logger.recs[-int(options['ID'])]
+    elif options['undo']:
+        rec = logger.recs[-int(options['ID'])]
+        todo.recs.append(rec)
+        del logger.recs[-int(options['ID'])]
+    elif options['addclock']:
+        add_clock(logger.recs[-int(options['ID'])],
+                  parse_clock(options['--clock']))
     elif options['do']:
         id = int(options['ID'])
         rec = todo.recs[id].copy()
@@ -548,6 +594,12 @@ def main():
         t = logger.clock(filters=filters)
         t = timedelta(seconds=int(t.total_seconds()))
         print("Total elapsed time: {0}".format(t))
+    elif options['tic']:
+        todo.tic()
+    elif options['toc']:
+        todo.toc()
+    elif options['cleartic']:
+        todo.cleartic()
     else:
         print("\nTo-do items")
         print("-------------")

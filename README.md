@@ -53,14 +53,22 @@ The basic commands for the logger CLI are:
 
 ## Task management
 
+Tasks are indexed from the start (first is 0, second is 1, etc.)
+
  - `t add [DESC]`: Add a task to the task list
  - `t del [ID]`:   Remove a task from the task list
  - `t do [ID]`:    Move a task from the task list to the log
 
 ## Log management
 
+Log record IDs are indexed from the end (i.e. the last is 1, second
+from last is 2, etc.)
+
  - `t log [DESC]`:  Add a log entry
  - `t done [DESC]`: Update last log entry data and closing time stamp
+ - `t delog [ID]`: Remove a log entry
+ - `t undo [ID]`: Move a log entry to the TODO list
+ - `t addclock [ID]`: Add to the time registered as spend on the task
 
 ## Log inquiries
 
@@ -71,6 +79,12 @@ With no arguments, `t` is equivalent to `t view`.
  - `t list [DESC]`:  Like `ls`, but also show clock information and notes
  - `t cal [DESC]`:   Show log entries under date/weekday subheadings
  - `t clock [DESC]`: Total times for all matching log entries
+
+## Timer management
+
+ - `t tic`: Mark a timer point
+ - `t toc`: List all tick points and time between them
+ - `t cleartic`: Clear the record of tick points
 
 # File formats
 
