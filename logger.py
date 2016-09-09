@@ -14,6 +14,7 @@ Usage:
   logger [options] undo [ID]
   logger [options] log [TITLE]
   logger [options] done [TITLE]
+  logger [options] edit [ID] [TITLE]
   logger [options] delog [ID]
   logger [options] tic
   logger [options] toc
@@ -177,7 +178,7 @@ def add_clock(rec, tmin):
     if 'tclock' in rec:
         tc = rec['tclock']
     elif 'tfinish' in rec and 'tstamp' in rec:
-        tc = (rec['tfinish']-rec['tstamp']).minutes
+        tc = (rec['tfinish']-rec['tstamp']).seconds // 60
     else:
         tc = 0
     rec['tclock'] = tc + tmin
@@ -236,7 +237,6 @@ def has_open_clock(rec):
 # ==================================================================
 # Log manager
 
-
 class Logger(object):
     """Manage a log file.
 
@@ -278,9 +278,9 @@ class Logger(object):
         self.update(desc, date, fields, tags)
         return self.last
 
-    def update(self, desc=None, date=None, fields=None, tags=None):
+    def update(self, desc=None, date=None, fields=None, tags=None, id=None):
         "Update record."
-        rec = self.last
+        rec = self.recs[-(id or 1)]
         if desc is not None:
             rec['desc'] = desc
         if date is not None:
@@ -585,6 +585,9 @@ def main():
     elif options['done']:
         logger.update(desc, date, fields, tags)
         set_clock(True)
+    elif options['edit']:
+        id = int(options['ID'])
+        logger.update(desc, date, fields, tags, id)
     elif options['list'] or options['ls']:
         logger.list(filters=filters, verbose=options['list'])
     elif options['cal']:
@@ -627,7 +630,8 @@ def main():
     if options['--note'] or options['--long']:
         if options['add']:
             todo.note(get_note(options['--long']))
-        elif options['do'] or options['log'] or options['done']:
+        elif (options['do'] or options['log'] or
+              options['done'] or options['edit']):
             logger.note(get_note(options['--long']))
         else:
             print("Cannot add note for this command")
