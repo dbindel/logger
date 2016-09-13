@@ -498,10 +498,11 @@ def main():
     options = docopt(__doc__)
 
     # Get collections
-    collect_opt = config_opt['collections'] or {}
+    collect_opt = config_opt.get('collections', {})
 
     # Figure out filename and open logger and catch file
     sort_key = None
+    notes_dir = config_opt.get('notes')
     if options['--xcol']:
         if options['--xcol'] not in collect_opt:
             print('Valid collections')
@@ -510,9 +511,10 @@ def main():
                 print('{0}: {1}'.format(c, collect_opt[c]['desc']))
             print(' ')
             sys.exit(-1)
-        fname = collect_opt[options['--xcol']]['file']
-        if 'sort' in collect_opt[options['--xcol']]:
-            sort_key = collect_opt[options['--xcol']]['sort']
+        copt = collect_opt[options['--xcol']]
+        fname = copt['file']
+        sort_key = copt.get('sort', sort_key)
+        notes_dir = copt.get('notes', notes_dir)
     else:
         fname = options['--file'] or config_opt['log']
     fname = expanduser(fname)
@@ -616,9 +618,8 @@ def main():
     def get_note(fname):
         if fname and 'editor' in config_opt:
             editor = config_opt['editor']
-            if 'notes' in config_opt:
-                ndir = config_opt['notes']
-                fname = "{0}{1}-{2}".format(ndir, today, fname)
+            if notes_dir:
+                fname = "{0}{1}-{2}".format(notes_dir, today, fname)
             else:
                 fname = "{0}-{1}".format(date, fname)
             subprocess.call((editor, fname))
