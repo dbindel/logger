@@ -1,4 +1,4 @@
-#!/Users/dbindel/anaconda/bin/python
+#!/usr/bin/env python
 
 """
 Usage:
@@ -622,7 +622,9 @@ def main():
                 fname = "{0}{1}-{2}".format(notes_dir, today, fname)
             else:
                 fname = "{0}-{1}".format(date, fname)
-            subprocess.call((editor, fname))
+            eargs = editor.split()
+            eargs.append(fname)
+            subprocess.call(eargs)
             return fname
         else:
             print("Enter note text (end with Ctrl-D):")
