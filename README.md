@@ -68,6 +68,7 @@ from last is 2, etc.)
  - `t done [DESC]`: Update last log entry data and closing time stamp
  - `t delog [ID]`: Remove a log entry
  - `t undo [ID]`: Move a log entry to the TODO list
+ - `t open [ID]`: Open notes file associated with a log entry
  - `t addclock [ID]`: Add to the time registered as spend on the task
 
 ## Log inquiries

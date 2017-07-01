@@ -16,10 +16,11 @@ Usage:
   logger [options] done [TITLE]
   logger [options] edit [ID] [TITLE]
   logger [options] delog [ID]
+  logger [options] open [ID]
+  logger [options] addclock [ID]
   logger [options] tic
   logger [options] toc
   logger [options] cleartic
-  logger [options] addclock [ID]
 
 Arguments:
   TITLE    Task description with any tags
@@ -565,6 +566,15 @@ def main():
         del todo.recs[int(options['ID'])]
     elif options['delog']:
         del logger.recs[-int(options['ID'])]
+    elif options['open']:
+        rec = logger.recs[-int(options['ID'])]
+        if 'note' in rec:
+            print(rec['note'])
+            if 'editor' in config_opt:
+                editor = config_opt['editor']
+                eargs = editor.split()
+                eargs.append(rec['note'])
+                subprocess.call(eargs)
     elif options['undo']:
         rec = logger.recs[-int(options['ID'])]
         todo.recs.append(rec)
