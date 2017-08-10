@@ -37,6 +37,7 @@ Options:
   -b DATE, --before=DATE     End date of list range
   -y DAYS, --yesterday=DAYS  Use date stamp from DAYS ago
   -t, --today                Add today's date stamp to title
+  --plain                    Use plain formatting
 """
 
 from docopt import docopt
@@ -94,6 +95,15 @@ ansi_codes = {
     'white':        '\033[1;37m'
 }
 
+plain_formats = {
+    'entry': '{date} {desc}{tags}',
+    'cal':   '  {desc}{tags}',
+    'tag':   '+{0}',
+    'due':         ' due:{0} ',
+    'due_warning': ' due:{0} ',
+    'due_past':    ' due:{0} ',
+    'clock': ' [{clock}]'
+}
 
 class RecPrinter(object):
     """Format log records for printing.
@@ -521,6 +531,8 @@ def main():
     fname = expanduser(fname)
     style = config_opt['style']
     lformats = config_opt['formats']
+    if options['--plain']:
+        lformats = plain_formats
     printer = RecPrinter(lformats, style)
     logger = Logger(fname, printer=printer)
 

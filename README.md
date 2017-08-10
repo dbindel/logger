@@ -48,6 +48,7 @@ common options are:
  - `-t`:      Today (date specification)
  - `-n`:      Add note to an entry
  - `-l FILE`: Add a long note to an entry (points to a new file)
+ - `--plain`: Display entries in plain format (no color codes)
 
 The basic commands for the logger CLI are:
 
